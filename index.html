@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ResearchFactory Terminal-Bench 2.0 持续补产、来源追踪、跨批次去重与 Docker 验证流水线介绍">
+  <title>ResearchFactory · Terminal-Bench Task Factory</title>
+  <style>
+    :root {
+      --navy: #0b1930;
+      --ink: #17243b;
+      --muted: #657187;
+      --paper: #ffffff;
+      --canvas: #f3f6fa;
+      --line: #dfe5ed;
+      --blue: #2463eb;
+      --cyan: #07a7ba;
+      --mint: #dff8f1;
+      --orange: #f28c28;
+      --purple: #7758d9;
+      --green: #087f5b;
+      --red: #c13c4b;
+      --shadow: 0 18px 50px rgba(24, 48, 86, .11);
+      --radius: 18px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; color: var(--ink); background: var(--canvas); }
+    a { color: inherit; }
+    button { font: inherit; }
+
+    .topbar {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 0 max(24px, calc((100vw - 1240px) / 2));
+      color: #fff;
+      background: rgba(11, 25, 48, .94);
+      border-bottom: 1px solid rgba(255, 255, 255, .1);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 760; }
+    .brand-mark {
+      width: 36px; height: 36px; display: grid; place-items: center;
+      border-radius: 11px; background: linear-gradient(135deg, var(--blue), var(--cyan));
+      box-shadow: 0 8px 24px rgba(36, 99, 235, .35);
+    }
+    .brand small { display: block; margin-top: 1px; color: #9fb0ca; font-size: 10px; font-weight: 600; letter-spacing: .08em; }
+    nav { display: flex; align-items: center; gap: 8px; }
+    nav a { padding: 9px 11px; border-radius: 9px; color: #c5d0e1; font-size: 13px; text-decoration: none; }
+    nav a:hover { color: #fff; background: rgba(255,255,255,.09); }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      color: #fff;
+      background:
+        radial-gradient(circle at 80% 15%, rgba(7, 167, 186, .32), transparent 27%),
+        radial-gradient(circle at 12% 95%, rgba(119, 88, 217, .26), transparent 30%),
+        var(--navy);
+    }
+    .hero::after {
+      content: ""; position: absolute; inset: 0; opacity: .13; pointer-events: none;
+      background-image: linear-gradient(rgba(255,255,255,.35) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.35) 1px, transparent 1px);
+      background-size: 44px 44px; mask-image: linear-gradient(to left, #000, transparent 70%);
+    }
+    .hero-inner { position: relative; z-index: 1; max-width: 1240px; min-height: 630px; margin: auto; padding: 86px 24px 70px; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 9px; padding: 7px 11px; border: 1px solid rgba(255,255,255,.2); border-radius: 999px; color: #c8fff7; background: rgba(255,255,255,.07); font-size: 12px; }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: #42e8b5; box-shadow: 0 0 0 5px rgba(66,232,181,.12); }
+    h1 { max-width: 970px; margin: 30px 0 24px; font-size: clamp(46px, 7.5vw, 92px); line-height: .98; letter-spacing: -.055em; }
+    h1 em { color: #52d5e4; font-style: normal; }
+    .lead { max-width: 760px; margin: 0; color: #bdc9da; font-size: clamp(17px, 2vw, 21px); line-height: 1.65; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 18px; border: 1px solid rgba(255,255,255,.2); border-radius: 11px; color: #fff; background: rgba(255,255,255,.07); font-weight: 700; font-size: 14px; text-decoration: none; }
+    .button.primary { border-color: #42d1df; color: #07182b; background: #52d5e4; }
+    .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 64px; }
+    .metric { padding: 18px; border: 1px solid rgba(255,255,255,.15); border-radius: 14px; background: rgba(255,255,255,.065); }
+    .metric strong { display: block; margin-bottom: 7px; font-size: 30px; letter-spacing: -.04em; }
+    .metric span { color: #aebdd1; font-size: 12px; line-height: 1.4; }
+
+    main { max-width: 1240px; margin: auto; padding: 70px 24px 90px; }
+    section { margin-bottom: 84px; scroll-margin-top: 92px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 28px; margin-bottom: 24px; }
+    .kicker { margin-bottom: 8px; color: var(--blue); font-size: 12px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    h2 { margin: 0; color: var(--navy); font-size: clamp(30px, 4vw, 46px); line-height: 1.08; letter-spacing: -.035em; }
+    .section-head p { max-width: 590px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+
+    .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .stage { position: relative; min-height: 210px; padding: 20px 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: 0 6px 20px rgba(28, 55, 92, .05); }
+    .stage:not(:last-child)::after { content: "›"; position: absolute; z-index: 2; top: 48%; right: -11px; color: var(--blue); font-size: 23px; font-weight: 900; }
+    .stage-no { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 28px; border-radius: 10px; color: #fff; background: var(--blue); font-weight: 800; font-size: 12px; }
+    .stage:nth-child(2) .stage-no { background: var(--cyan); }
+    .stage:nth-child(3) .stage-no { background: var(--purple); }
+    .stage:nth-child(4) .stage-no { background: var(--orange); }
+    .stage:nth-child(5) .stage-no { background: var(--green); }
+    .stage:nth-child(6) .stage-no { background: var(--red); }
+    .stage:nth-child(7) .stage-no { background: #156cbd; }
+    .stage:nth-child(8) .stage-no { background: #0f8b69; }
+    .stage:nth-child(4)::after { display: none; }
+    .stage h3 { margin: 0 0 9px; color: var(--navy); font-size: 16px; }
+    .stage p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .stage code { display: block; margin-top: 16px; color: var(--blue); font-size: 10px; overflow-wrap: anywhere; }
+
+    .result-wrap { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: var(--shadow); }
+    .result-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 20px; border-bottom: 1px solid var(--line); background: #f9fbfd; }
+    .result-toolbar b { color: var(--navy); font-size: 14px; }
+    .filters { display: flex; gap: 7px; }
+    .filter { padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: #fff; cursor: pointer; font-size: 12px; }
+    .filter.active { border-color: var(--blue); color: #fff; background: var(--blue); }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 850px; }
+    th, td { padding: 14px 18px; border-bottom: 1px solid #edf0f4; text-align: left; font-size: 12px; }
+    th { color: var(--muted); background: #fcfdfe; font-size: 10px; letter-spacing: .09em; text-transform: uppercase; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #f7faff; }
+    .source { display: inline-flex; padding: 5px 8px; border-radius: 7px; color: #2153b8; background: #e9f0ff; font-weight: 750; }
+    .source.github { color: #563bb0; background: #eee9ff; }
+    .type { color: var(--green); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .ok { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-weight: 760; }
+    .ok::before { content: "✓"; display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; color: #fff; background: var(--green); font-size: 11px; }
+    .repair-count { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+
+    .feedback-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .feedback-step { padding: 20px; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); }
+    .feedback-step b { display: block; margin-bottom: 8px; color: var(--navy); font-size: 15px; }
+    .feedback-step p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .feedback-step code { color: var(--blue); font-size: 11px; }
+
+    .delivery-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16px; }
+    .delivery-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
+    .delivery-stat { padding: 17px; border: 1px solid var(--line); border-radius: 13px; background: #f8fafc; }
+    .delivery-stat strong { display: block; color: var(--navy); font-size: 27px; letter-spacing: -.04em; }
+    .delivery-stat span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .delivery-stat.highlight { border-color: #a8e5d3; background: var(--mint); }
+    .delivery-stat.highlight strong { color: var(--green); }
+    .file-list { display: grid; gap: 9px; }
+    .file-item { padding: 13px 14px; border: 1px solid rgba(255,255,255,.13); border-radius: 10px; background: rgba(255,255,255,.055); }
+    .file-item code { color: #79e3ee; font-size: 11px; }
+    .file-item span { display: block; margin-top: 5px; color: #aebdd1; font-size: 11px; line-height: 1.5; }
+    .gate-row { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+    .gate-row:last-child { border-bottom: 0; }
+    .gate-row b { color: var(--green); }
+    .command { margin-top: 16px; padding: 16px; overflow-x: auto; border-radius: 12px; color: #c8fff7; background: #071426; font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+
+    .archetypes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .archetype { min-height: 145px; padding: 18px; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); }
+    .archetype small { color: var(--blue); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+    .archetype h3 { margin: 12px 0 7px; color: var(--navy); font-size: 15px; }
+    .archetype p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .archetype.repair { border-color: #f1c7cc; background: #fff9fa; }
+    .archetype.repair small { color: var(--red); }
+
+    .architecture { display: grid; grid-template-columns: 1.15fr .85fr; gap: 16px; }
+    .panel { padding: 26px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); }
+    .panel.dark { color: #fff; background: var(--navy); border-color: var(--navy); }
+    .panel h3 { margin: 0 0 16px; font-size: 19px; }
+    .panel.dark h3 { color: #fff; }
+    .flowline { display: flex; align-items: center; gap: 7px; overflow-x: auto; padding: 10px 0 18px; }
+    .flowbox { flex: 1 0 120px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--navy); background: #f8fafc; font-size: 11px; font-weight: 700; text-align: center; }
+    .arrow { color: var(--blue); font-weight: 900; }
+    .truth-list { display: grid; gap: 10px; }
+    .truth { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; color: #cad4e4; font-size: 13px; line-height: 1.5; }
+    .truth i { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; color: #062118; background: #48ddb1; font-style: normal; font-size: 11px; font-weight: 900; }
+    .truth.todo i { color: #382209; background: #ffc36d; }
+
+    .callout { display: grid; grid-template-columns: 1fr auto; gap: 30px; align-items: center; padding: 34px; border-radius: 22px; color: #fff; background: linear-gradient(125deg, #1f5fe6, #087f85); box-shadow: var(--shadow); }
+    .callout h2 { color: #fff; font-size: 29px; }
+    .callout p { max-width: 760px; margin: 12px 0 0; color: #d8f0f3; line-height: 1.65; }
+    .stamp { padding: 12px 14px; border: 1px solid rgba(255,255,255,.24); border-radius: 12px; background: rgba(255,255,255,.1); text-align: center; white-space: nowrap; }
+    .stamp strong { display: block; font-size: 22px; }
+    .stamp span { color: #d8f0f3; font-size: 10px; }
+
+    footer { padding: 26px 24px; color: #92a1b9; background: var(--navy); text-align: center; font-size: 11px; }
+
+    @media (max-width: 1050px) {
+      .metrics { grid-template-columns: repeat(3, 1fr); }
+      .pipeline { grid-template-columns: repeat(3, 1fr); }
+      .stage:nth-child(3)::after, .stage:nth-child(6)::after { display: none; }
+      .stage:nth-child(4)::after { display: block; }
+      .archetypes { grid-template-columns: repeat(3, 1fr); }
+      .feedback-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 760px) {
+      .topbar { padding: 0 16px; }
+      nav { display: none; }
+      .hero-inner { min-height: auto; padding: 64px 18px 48px; }
+      .metrics { grid-template-columns: repeat(2, 1fr); margin-top: 44px; }
+      main { padding: 54px 16px 70px; }
+      section { margin-bottom: 64px; }
+      .section-head { display: block; }
+      .section-head p { margin-top: 13px; }
+      .pipeline { grid-template-columns: 1fr; }
+      .stage { min-height: 0; }
+      .stage::after { display: none !important; }
+      .archetypes { grid-template-columns: repeat(2, 1fr); }
+      .feedback-grid { grid-template-columns: 1fr; }
+      .architecture { grid-template-columns: 1fr; }
+      .delivery-grid { grid-template-columns: 1fr; }
+      .callout { grid-template-columns: 1fr; }
+      .result-toolbar { align-items: flex-start; flex-direction: column; }
+    }
+    @media (max-width: 470px) {
+      h1 { font-size: 44px; }
+      .metrics, .archetypes { grid-template-columns: 1fr; }
+      .delivery-stats { grid-template-columns: 1fr; }
+      .filters { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">RF</span><span>ResearchFactory<small>TERMINAL-BENCH TASK FACTORY</small></span></div>
+    <nav aria-label="页面导航">
+      <a href="#pipeline">流水线</a>
+      <a href="#delivery">100 题交付</a>
+      <a href="#results">12 题试运行</a>
+      <a href="#feedback">反馈优化</a>
+      <a href="#archetypes">任务类型</a>
+      <a href="#quality">质量边界</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div class="hero-inner">
+      <span class="eyebrow"><span class="pulse"></span> 2026-07-14 · 100 题唯一有效交付包已完成</span>
+      <h1>From real software to <em>100 validated</em> terminal tasks.</h1>
+      <p class="lead">从真实软件来源持续补产，经过显式 task archetype、Docker baseline/solution hard gates、反馈修复、来源追踪与跨批次去重，形成可审计的 Terminal-Bench 2.0 交付包。</p>
+      <div class="hero-actions">
+        <a class="button primary" href="#delivery">查看 100 题交付结果</a>
+        <a class="button" href="#pipeline">理解生产流程</a>
+      </div>
+      <div class="metrics" aria-label="最新运行指标">
+        <div class="metric"><strong>120</strong><span>实际消费 sources</span></div>
+        <div class="metric"><strong>114</strong><span>Docker hard gates 通过</span></div>
+        <div class="metric"><strong>102</strong><span>有效唯一候选</span></div>
+        <div class="metric"><strong>100</strong><span>正式交付任务</span></div>
+        <div class="metric"><strong>2</strong><span>有效备选任务</span></div>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <section id="pipeline">
+      <div class="section-head">
+        <div><div class="kicker">Pipeline</div><h2>一条可审查的生产漏斗</h2></div>
+        <p>source artifact 是真实能力证据，不等于最终题目。任务包会重新构造成小型、离线、确定性可验证的 Terminal-Bench 环境。</p>
+      </div>
+      <div class="pipeline">
+        <article class="stage"><span class="stage-no">01</span><h3>Taxonomy</h3><p>从 TB2.0 原题抽取能力维度与代表性标签。</p><code>capability_taxonomy.json</code></article>
+        <article class="stage"><span class="stage-no">02</span><h3>Multi-source recall</h3><p>召回 GitHub、Docker Hub、HF、Binder、devcontainer 等真实工件。</p><code>env_candidates.jsonl</code></article>
+        <article class="stage"><span class="stage-no">03</span><h3>Coarse + fine rank</h3><p>规则、metadata 与 LLM judge 筛选可验证、CPU-friendly 的 source。</p><code>env_cards.jsonl</code></article>
+        <article class="stage"><span class="stage-no">04</span><h3>Archetype assignment</h3><p>按 select_rank 轮转分配 12 种任务形态，抑制 repair/fix 偏置。</p><code>rf_taskgen_assignment.json</code></article>
+        <article class="stage"><span class="stage-no">05</span><h3>Agent authoring</h3><p>Agent inspect source，编写 visible artifacts、hidden oracle 与 solution。</p><code>task/ + public/</code></article>
+        <article class="stage"><span class="stage-no">06</span><h3>Contract gate</h3><p>检查结构、assignment 一致性、canary、placeholder 与 hidden boundary。</p><code>static validation</code></article>
+        <article class="stage"><span class="stage-no">07</span><h3>Precise validation</h3><p>真实构建镜像，在两个全新容器中分别验证 baseline 与 reference solution。</p><code>tb-validate · 0 → 1</code></article>
+        <article class="stage"><span class="stage-no">08</span><h3>Feedback refinement</h3><p>按失败阶段提取日志，让 authoring agent 定点修复并重新执行 hard gates。</p><code>tb-refine · max 2 rounds</code></article>
+      </div>
+    </section>
+
+    <section id="delivery">
+      <div class="section-head">
+        <div><div class="kicker">100-task delivery</div><h2>持续补产到目标，而不是只生成一轮</h2></div>
+        <p><code>tb-pipeline</code> 按 wave 循环生成、验证、反馈修复和去重；达到 100 道有效唯一任务后停止，并把来源说明、去重证据和完整维护者任务包一起交付。</p>
+      </div>
+      <div class="delivery-grid">
+        <article class="panel">
+          <h3>本轮生产漏斗</h3>
+          <div class="delivery-stats">
+            <div class="delivery-stat"><strong>160</strong><span>source budget 上限</span></div>
+            <div class="delivery-stat"><strong>120</strong><span>达到目标前实际消费</span></div>
+            <div class="delivery-stat"><strong>114</strong><span>通过 baseline / solution 验证</span></div>
+            <div class="delivery-stat"><strong>12</strong><span>因历史来源重复被拒绝</span></div>
+            <div class="delivery-stat"><strong>2</strong><span>有效唯一备选</span></div>
+            <div class="delivery-stat highlight"><strong>100</strong><span>最终正式交付</span></div>
+          </div>
+          <div style="margin-top:18px">
+            <div class="gate-row"><span>唯一 source identity</span><b>100 / 100</b></div>
+            <div class="gate-row"><span>唯一 task name</span><b>100 / 100</b></div>
+            <div class="gate-row"><span>唯一 content SHA-256</span><b>100 / 100</b></div>
+            <div class="gate-row"><span>baseline=0 且 solution=1</span><b>100 / 100</b></div>
+          </div>
+        </article>
+        <article class="panel dark">
+          <h3>可审计交付目录</h3>
+          <div class="file-list">
+            <div class="file-item"><code>tasks/&lt;workspace&gt;/</code><span>100 个完整 maintainer package；包含 hidden tests 和 reference solution，不直接暴露给 solver。</span></div>
+            <div class="file-item"><code>provenance/&lt;workspace&gt;.json</code><span>逐题来源、grounding、archetype、验证结果、修复轮数和内容哈希，位于任务根目录之外。</span></div>
+            <div class="file-item"><code>SOURCE_PROVENANCE.jsonl</code><span>100 道题的来源说明汇总，可供交接、审计与后续跨批次去重。</span></div>
+            <div class="file-item"><code>DEDUP_REPORT.json</code><span>精确重复、近重复阈值、历史参考批次与被拒绝任务记录。</span></div>
+            <div class="file-item"><code>DELIVERY_MANIFEST.json</code><span>正式交付清单与批次级统计。</span></div>
+          </div>
+        </article>
+      </div>
+      <div class="command">researchfactory tb-pipeline \
+  --skip-sourcing --pool runs/tb100_source/terminalbench/environment_pool.jsonl \
+  --output-root runs/tb100_work --delivery-root runs/tb100_delivery \
+  --target-valid 100 --wave-size 20 --limit 160 \
+  --near-duplicate-threshold 0.82 --dedup-reference runs/previous_batch</div>
+    </section>
+
+    <section id="results">
+      <div class="section-head">
+        <div><div class="kicker">Pilot batch</div><h2>12 种题型的早期完整试运行</h2></div>
+        <p>这批 12 题是 100 题生产前的闭环验证：每种 archetype 恰好一题，5 道首次执行直接通过，7 道经反馈修复后通过，最终全部满足 baseline=0、solution=1。</p>
+      </div>
+      <div class="result-wrap">
+        <div class="result-toolbar"><b>tb12_feedback_taskgen_opus_20260713</b><div class="filters" role="group" aria-label="来源筛选"><button class="filter active" data-source="all">全部 12</button><button class="filter" data-source="dockerhub">Docker Hub 10</button><button class="filter" data-source="github">GitHub 2</button></div></div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Source</th><th>Task archetype</th><th>Generated task</th><th>Final hard gate</th></tr></thead>
+            <tbody id="taskRows">
+              <tr data-source="dockerhub"><td><span class="source">ruby</span></td><td class="type">troubleshoot_repair</td><td>Ruby Rake CSV repair</td><td><span class="ok">0 → 1</span><span class="repair-count">直接通过</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">perl</span></td><td class="type">implement_feature</td><td>Perl log correlation tool</td><td><span class="ok">0 → 1</span><span class="repair-count">修复 1 轮</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">composer</span></td><td class="type">configure_service</td><td>Composer project configuration</td><td><span class="ok">0 → 1</span><span class="repair-count">修复 1 轮</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">httpd</span></td><td class="type">build_package</td><td>HTTPd Debian package build</td><td><span class="ok">0 → 1</span><span class="repair-count">直接通过</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">haproxy</span></td><td class="type">transform_analyze_data</td><td>HAProxy security log analysis</td><td><span class="ok">0 → 1</span><span class="repair-count">修复 2 轮</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">docker-bench-security</span></td><td class="type">security_audit_hardening</td><td>CIS Docker audit & hardening</td><td><span class="ok">0 → 1</span><span class="repair-count">直接通过</span></td></tr>
+              <tr data-source="github"><td><span class="source github">DockerCleaner</span></td><td class="type">deploy_integrate</td><td>Dockerfile security scanning pipeline</td><td><span class="ok">0 → 1</span><span class="repair-count">修复 1 轮</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">memcached</span></td><td class="type">migrate_upgrade</td><td>Memcached systemd migration</td><td><span class="ok">0 → 1</span><span class="repair-count">修复 1 轮</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">redis</span></td><td class="type">optimize_performance</td><td>Redis bulk ingestion optimization</td><td><span class="ok">0 → 1</span><span class="repair-count">修复 1 轮</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">openpolicyagent/opa</span></td><td class="type">investigate_report</td><td>OPA decision-log investigation</td><td><span class="ok">0 → 1</span><span class="repair-count">直接通过</span></td></tr>
+              <tr data-source="dockerhub"><td><span class="source">busybox</span></td><td class="type">author_tests_validation</td><td>BusyBox file-organizer test suite</td><td><span class="ok">0 → 1</span><span class="repair-count">直接通过</span></td></tr>
+              <tr data-source="github"><td><span class="source github">scikit-plots</span></td><td class="type">automate_workflow</td><td>ML evaluation automation pipeline</td><td><span class="ok">0 → 1</span><span class="repair-count">修复 1 轮</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="feedback">
+      <div class="section-head">
+        <div><div class="kicker">Validation-guided refinement</div><h2>失败日志驱动的反馈闭环</h2></div>
+        <p><code>tb-refine</code> 不重新发散出题，而是在保留 source、archetype、assignment、canary 和 hidden oracle 边界的前提下，对现有 package 做定点修复。</p>
+      </div>
+      <div class="feedback-grid">
+        <article class="feedback-step"><b>1 · 真实验证</b><p>先跑静态 contract，再构建 <code>environment/</code>，分别执行 untouched baseline 和 reference solution。</p></article>
+        <article class="feedback-step"><b>2 · 选择证据</b><p>按失败阶段读取 <code>build.log</code>、<code>baseline.log</code>、<code>solution.log</code> 或 <code>verifier.log</code>。</p></article>
+        <article class="feedback-step"><b>3 · 约束修复</b><p>Agent 原地修复，但不能换题型、换 source，不能删除或弱化有意义的 oracle assertion。</p></article>
+        <article class="feedback-step"><b>4 · 重新过门</b><p>重新导出 public view 并再跑 Docker hard gates；默认最多两轮，逐轮保存 prompt、trace、日志与报告。</p></article>
+      </div>
+      <div class="panel" style="margin-top:12px"><h3>现在可以一条命令持续补产</h3><p style="margin:0;color:var(--muted);font-size:13px;line-height:1.7"><code>researchfactory tb-pipeline ... --target-valid 100 --wave-size 20 --limit 160</code><br>该入口按 wave 执行 taskgen、反馈验证、来源记录和去重，达到目标后生成交付目录；原有独立命令仍可单独使用。</p></div>
+    </section>
+
+    <section id="archetypes">
+      <div class="section-head">
+        <div><div class="kicker">Diversity control</div><h2>不再只是 repair / fix</h2></div>
+        <p>assignment 是只读的隐藏契约；blueprint 与 manifest 必须保持一致。非 repair 类型的 baseline failure 来自目标产物尚未创建，而不是人为注入故障。</p>
+      </div>
+      <div class="archetypes">
+        <article class="archetype repair"><small>01 · troubleshoot_repair</small><h3>故障排查与修复</h3><p>诊断已有代码、配置或数据中的真实缺陷。</p></article>
+        <article class="archetype"><small>02 · implement_feature</small><h3>功能实现</h3><p>为可用项目增加缺失的 CLI、服务或库能力。</p></article>
+        <article class="archetype"><small>03 · configure_service</small><h3>服务配置</h3><p>创建满足明确运行要求的工具或服务配置。</p></article>
+        <article class="archetype"><small>04 · build_package</small><h3>构建与打包</h3><p>产出可安装软件包、二进制或可复现工件。</p></article>
+        <article class="archetype"><small>05 · transform_analyze_data</small><h3>数据处理与分析</h3><p>把真实输入转成数据集、索引或结构化报告。</p></article>
+        <article class="archetype"><small>06 · security_audit_hardening</small><h3>安全审计与加固</h3><p>评估安全状态并产出可验证的策略与加固结果。</p></article>
+        <article class="archetype"><small>07 · deploy_integrate</small><h3>部署与集成</h3><p>连接组件，形成可检查的本地服务或 CLI 行为。</p></article>
+        <article class="archetype"><small>08 · migrate_upgrade</small><h3>迁移与升级</h3><p>迁移代码、依赖、配置或数据格式。</p></article>
+        <article class="archetype"><small>09 · optimize_performance</small><h3>性能优化</h3><p>在保持正确性的同时改善可测量性能指标。</p></article>
+        <article class="archetype"><small>10 · investigate_report</small><h3>调查与报告</h3><p>从日志或系统状态产出基于证据的诊断报告。</p></article>
+        <article class="archetype"><small>11 · author_tests_validation</small><h3>测试与验证</h3><p>创建可复用 checker、linter 或测试套件。</p></article>
+        <article class="archetype"><small>12 · automate_workflow</small><h3>工作流自动化</h3><p>实现幂等、可重复运行的多步骤脚本或流水线。</p></article>
+      </div>
+    </section>
+
+    <section id="quality">
+      <div class="section-head">
+        <div><div class="kicker">Quality boundary</div><h2>已经过哪些门，还缺什么</h2></div>
+        <p>100 道交付题已经从“静态合格”升级为“可执行且批次内唯一”。这证明 reference solution、verifier、来源追踪与去重闭环成立，但不等于难度、泛化性和抗投机性已经完成校准。</p>
+      </div>
+      <div class="architecture">
+        <article class="panel">
+          <h3>任务包内部契约</h3>
+          <div class="flowline"><div class="flowbox">source row</div><span class="arrow">→</span><div class="flowbox">assignment</div><span class="arrow">→</span><div class="flowbox">blueprint</div><span class="arrow">→</span><div class="flowbox">task package</div><span class="arrow">→</span><div class="flowbox">public export</div></div>
+          <p style="margin:0;color:var(--muted);font-size:13px;line-height:1.65">Contract validation 会检查 TB2 文件结构、task.toml、assignment/blueprint/manifest 一致性、placeholder、canary，以及 tests/solution 不进入 public 的边界。</p>
+        </article>
+        <article class="panel dark">
+          <h3>Hard gates</h3>
+          <div class="truth-list">
+            <div class="truth"><i>✓</i><span>Source grounding 与任务类型 assignment 已记录</span></div>
+            <div class="truth"><i>✓</i><span>Package schema 与 public/hidden boundary 已检查</span></div>
+            <div class="truth"><i>✓</i><span>Docker build 与隔离容器执行已通过</span></div>
+            <div class="truth"><i>✓</i><span>100/100 baseline reward=0、solution reward=1</span></div>
+            <div class="truth"><i>✓</i><span>来源、题名与内容哈希均为 100/100 唯一</span></div>
+            <div class="truth todo"><i>→</i><span>下一步：anti-hardcode 与 solver panel 校准</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="callout">
+      <div><h2>一句话介绍</h2><p>ResearchFactory 用真实软件工件提供 grounding，以显式 task archetype 控制题型多样性，再通过 Docker hard gates、反馈修复、来源追踪和跨批次去重，持续生产可复现、可审计的 Terminal-Bench 任务。</p></div>
+      <div class="stamp"><strong>v4</strong><span>100-TASK DELIVERY · 2026-07-14</span></div>
+    </section>
+  </main>
+
+  <footer>ResearchFactory · Blueprint-guided, software-artifact-grounded Terminal-Bench generation</footer>
+
+  <script>
+    const buttons = [...document.querySelectorAll('.filter')];
+    const rows = [...document.querySelectorAll('#taskRows tr')];
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      buttons.forEach((item) => item.classList.toggle('active', item === button));
+      const source = button.dataset.source;
+      rows.forEach((row) => { row.hidden = source !== 'all' && row.dataset.source !== source; });
+    }));
+  </script>
+</body>
+</html>
